@@ -77,39 +77,57 @@ OCR/Kafka entirely by seeding data directly into the database.
    ```
 
 9. Seed a realistic record. There's no Kafka broker in this mode, so nothing will call
-   `document.uploaded` for you — insert a `LeaseDocument` + `ExtractedField` directly:
+   `document.uploaded` for you — insert a `LeaseDocument` + `ExtractedField` directly.
+
+   Write the seed script to a temp file with a quoted heredoc (`'PYEOF'`) rather than an inline
+   `python -c "..."` one-liner — a long multi-line string with nested quotes is easy for a shell
+   to misparse when copy-pasted (e.g. `unexpected EOF while looking for matching quote`); a
+   heredoc avoids shell quote-parsing entirely:
+   Note the body below is indented with a single tab per line and uses `<<-` (not `<<`), so the
+   leading tab is stripped from every line — including the `PYEOF` terminator — regardless of
+   how much markdown-list indentation your copy tool adds on top:
    ```bash
+   cat > ./seed_demo.py <<-'PYEOF'
+	import asyncio
+	import uuid
+	from datetime import datetime, timezone
+
+	from src.models.db import session_scope
+	from src.models.lease_document import LeaseDocument
+	from src.models.extracted_field import ExtractedField
+	from src.models.enums import OcrStatus, RunType, FieldType, VerificationStatus
+
+	TEAM_ID = uuid.UUID("11111111-1111-1111-1111-111111111111")
+	DOC_ID = uuid.UUID("22222222-2222-2222-2222-222222222222")
+	FIELD_ID = uuid.UUID("33333333-3333-3333-3333-333333333333")
+
+
+	async def seed():
+	    async with session_scope() as session:
+	        session.add(LeaseDocument(
+	            id=DOC_ID, deal_id=uuid.uuid4(), team_id=TEAM_ID, allowed_teams=[TEAM_ID],
+	            s3_key="lease-bucket/leases/demo.pdf", sha256="demo-sha",
+	            ocr_status=OcrStatus.COMPLETE, run_type=RunType.LIVE,
+	            uploaded_at=datetime.now(timezone.utc),
+	        ))
+	        session.add(ExtractedField(
+	            id=FIELD_ID, lease_document_id=DOC_ID, field_type=FieldType.BASE_RENT,
+	            extracted_value={"amount": 38.50, "unit": "USD_PER_SQFT_PER_YEAR"},
+	            confidence_score=0.97, model_version="demo-seed",
+	            verification_status=VerificationStatus.UNVERIFIED,
+	        ))
+
+
+	asyncio.run(seed())
+	print(DOC_ID, FIELD_ID, TEAM_ID)
+	PYEOF
+
    LEASE_ABSTRACTION_DATABASE_URL="sqlite+aiosqlite:///./local_demo.db" \
-   .venv/bin/python -c "
-   import asyncio, uuid
-   from datetime import datetime, timezone
-   from src.models.db import session_scope
-   from src.models.lease_document import LeaseDocument
-   from src.models.extracted_field import ExtractedField
-   from src.models.enums import OcrStatus, RunType, FieldType, VerificationStatus
-
-   TEAM_ID = uuid.UUID('11111111-1111-1111-1111-111111111111')
-   DOC_ID = uuid.UUID('22222222-2222-2222-2222-222222222222')
-   FIELD_ID = uuid.UUID('33333333-3333-3333-3333-333333333333')
-
-   async def seed():
-       async with session_scope() as session:
-           session.add(LeaseDocument(
-               id=DOC_ID, deal_id=uuid.uuid4(), team_id=TEAM_ID, allowed_teams=[TEAM_ID],
-               s3_key='lease-bucket/leases/demo.pdf', sha256='demo-sha',
-               ocr_status=OcrStatus.COMPLETE, run_type=RunType.LIVE,
-               uploaded_at=datetime.now(timezone.utc),
-           ))
-           session.add(ExtractedField(
-               id=FIELD_ID, lease_document_id=DOC_ID, field_type=FieldType.BASE_RENT,
-               extracted_value={'amount': 38.50, 'unit': 'USD_PER_SQFT_PER_YEAR'},
-               confidence_score=0.97, model_version='demo-seed',
-               verification_status=VerificationStatus.UNVERIFIED,
-           ))
-   asyncio.run(seed())
-   print(DOC_ID, FIELD_ID, TEAM_ID)
-   "
+     .venv/bin/python ./seed_demo.py
    ```
+   (Run from `services/lease-abstraction`, same as the rest of this guide — `python -c` implicitly
+   puts the current directory on `sys.path` so `import src...` resolves; running a script from
+   `/tmp` would not, since `src` isn't installed as an importable package name.)
 
 10. Drive it with `curl` (headers `X-User-Id` / `X-Team-Id` stand in for the platform's real
     AuthN/AuthZ gateway — see `src/api/deps.py`):
@@ -161,7 +179,7 @@ OCR/Kafka entirely by seeding data directly into the database.
 12. Stop the server and clean up:
     ```bash
     pkill -f "uvicorn src.api.main:app"
-    rm -f local_demo.db
+    rm -f local_demo.db seed_demo.py
     ```
 
 ## Full production-like stack
