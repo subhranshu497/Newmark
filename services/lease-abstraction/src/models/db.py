@@ -75,8 +75,22 @@ async def session_scope() -> AsyncIterator[AsyncSession]:
 
 
 async def create_all() -> None:
-    """Create all tables. Used by local/dev bootstrap and by the test suite;
-    production schema changes go through Alembic migrations instead."""
+    """Create all tables. Used by local/dev bootstrap; production schema
+    changes go through Alembic migrations instead (see migrations/env.py).
+
+    Imports every model module first — `Base.metadata` only knows about
+    tables whose module has actually been imported somewhere, so calling
+    this without that import step silently creates an incomplete schema.
+    """
+    from src.models import (  # noqa: F401
+        accuracy_metric,
+        baseline_measurement,
+        extracted_field,
+        lease_document,  # also defines ExtractionRun
+        override_rate_metric,
+        review_queue_item,
+    )
+
     async with get_engine().begin() as conn:
         if SCHEMA_NAME:
             from sqlalchemy import text

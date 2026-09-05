@@ -12,6 +12,7 @@ dependencies = [
     "alembic>=1.13",
     "pydantic>=2.8",
     "pydantic-settings>=2.4",
+    "python-dotenv>=1.0",
     "confluent-kafka>=2.5",
     "pybreaker>=1.2",
     "anthropic>=0.34",
