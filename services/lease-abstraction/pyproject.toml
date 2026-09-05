@@ -18,6 +18,8 @@ dependencies = [
     "anthropic>=0.34",
     "openai>=1.40",
     "boto3>=1.34",
+    "pypdf>=4.0",
+    "python-multipart>=0.0.9",
 ]
 
 [project.optional-dependencies]

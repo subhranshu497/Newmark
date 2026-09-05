@@ -49,11 +49,16 @@ class DocumentUploadedConsumer:
 
     async def handle(
         self, session: AsyncSession, event: dict[str, Any], run_type: RunType = RunType.LIVE
-    ) -> None:
+    ) -> LeaseDocument | None:
         """Process a new document. `run_type` is LIVE for `document.uploaded` and
-        BACKFILL for `document.backfill.requested` (T044, isolated backfill path)."""
+        BACKFILL for `document.backfill.requested` (T044, isolated backfill path).
+
+        Returns the created LeaseDocument (callers that only consume Kafka
+        events, like backfill_consumer.py, ignore this; src/api/demo_seed.py
+        uses it to report the document id back to the caller synchronously).
+        """
         if event.get("documentType") != "LEASE":
-            return  # only lease documents are processed by this service
+            return None  # only lease documents are processed by this service
 
         document = LeaseDocument(
             id=uuid.uuid4(),
@@ -80,6 +85,7 @@ class DocumentUploadedConsumer:
         await session.flush()
 
         await self._run_pipeline(session, document, run, existing_fields_by_type={})
+        return document
 
     async def reprocess(self, session: AsyncSession, lease_document_id: uuid.UUID) -> None:
         """Rerun the pipeline against an existing document (e.g. model upgrade).

@@ -65,16 +65,38 @@ OCR/Kafka entirely by seeding data directly into the database.
    ```
    Expect: 31 passed, lint clean.
 
-7. Start the API server in the background:
+7. **Start the backend.** Add `LEASE_ABSTRACTION_ENABLE_DEMO_UI=1` to also mount the demo
+   endpoints (`src/api/demo_seed.py`: `POST /demo/seed` and `POST /demo/parse-upload`) and open
+   CORS — needed because the demo frontend, `lease-parser-ui` (a separate project at
+   `../../lease-parser-ui` relative to this service, i.e. `Newmark/lease-parser-ui`), runs on its
+   own origin rather than being served by this app. Gated behind this flag and never mounted
+   otherwise, so it's not part of the platform contract (contracts/api.md) or exposed in any real
+   deployment:
    ```bash
    LEASE_ABSTRACTION_DATABASE_URL="sqlite+aiosqlite:///./local_demo.db" \
+   LEASE_ABSTRACTION_ENABLE_DEMO_UI=1 \
      nohup .venv/bin/uvicorn src.api.main:app --port 8000 --host 127.0.0.1 &> /tmp/server.log &
    ```
 
-8. Verify it's up:
+   **Start the frontend** (separate terminal, separate origin):
+   ```bash
+   cd ../../lease-parser-ui && python3 -m http.server 5173
+   ```
+   Then open `http://127.0.0.1:5173` — its "API base URL" field defaults to
+   `http://127.0.0.1:8000`, matching the backend port above.
+
+8. Verify the backend is up:
    ```bash
    curl -sf http://127.0.0.1:8000/openapi.json
    ```
+   If you started the demo UI, open `http://127.0.0.1:5173` and use its **"Upload a lease PDF to
+   parse"** panel — this uploads a real PDF, extracts its text locally (no Textract/AWS needed),
+   and runs it through the real pipeline: Claude extraction with OpenAI failover (FR-012) and
+   confidence-threshold routing to auto-populate vs. the review queue (FR-004/FR-013). It's a real,
+   billed model call using the keys from step 4's `.env`, not a fake seed. The page's other panels
+   (field verification, review queue, baseline measurement) replace step 10's curl calls — skip
+   straight to step 12 when done. Use **"...or seed a fake demo record"** instead if you just want
+   to exercise the UI without spending API credits (replaces step 9).
 
 9. Seed a realistic record. There's no Kafka broker in this mode, so nothing will call
    `document.uploaded` for you — insert a `LeaseDocument` + `ExtractedField` directly.

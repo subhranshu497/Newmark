@@ -56,6 +56,11 @@ class Settings(BaseSettings):
 
     backfill_rate_limit_per_minute: int = 30
 
+    # Mounts the seed endpoint (src/api/demo_seed.py) and opens CORS for the
+    # standalone lease-parser-ui frontend. Off by default so a real deployment
+    # never exposes a data-seeding endpoint or relaxes CORS.
+    enable_demo_ui: bool = False
+
     def confidence_threshold_for(self, field_type: FieldType) -> float:
         return self.confidence_thresholds.get(field_type.value, DEFAULT_CONFIDENCE_THRESHOLD)
 
