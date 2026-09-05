@@ -1,2 +1,18 @@
 .idea/
 ~$*
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+dist/
+build/
+
+# Environment
+.env
+.env.*
+

@@ -1,0 +1,53 @@
+[project]
+name = "lease-abstraction"
+version = "0.1.0"
+description = "Lease abstraction AI-layer service: OCR + LLM extraction with confidence-scored review queue (Newmark AI Layer for Commercial Leasing)"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "sqlalchemy>=2.0",
+    "greenlet>=3.1",
+    "asyncpg>=0.29",
+    "alembic>=1.13",
+    "pydantic>=2.8",
+    "pydantic-settings>=2.4",
+    "confluent-kafka>=2.5",
+    "pybreaker>=1.2",
+    "anthropic>=0.34",
+    "openai>=1.40",
+    "boto3>=1.34",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "httpx>=0.27",
+    "aiosqlite>=0.20",
+    "ruff>=0.6",
+    "black>=24.8",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+# B008: FastAPI's Depends()/Query() in argument defaults is the required,
+# idiomatic pattern (not a real "mutable default" bug) — ruff's generic
+# rule doesn't know that, so it's silenced project-wide rather than
+# per-line-ignored on every endpoint.
+# UP047: stylistic preference for PEP 695 generic syntax; classic TypeVar
+# is still fully valid on 3.12 and not worth the churn here.
+ignore = ["B008", "UP047"]
+
+[tool.black]
+line-length = 100
+target-version = ["py312"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+pythonpath = ["."]
