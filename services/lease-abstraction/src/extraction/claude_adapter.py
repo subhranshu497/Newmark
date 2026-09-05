@@ -8,6 +8,7 @@ OCR-level confidence. Wrapped by the extraction circuit breaker (T008).
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -28,6 +29,17 @@ with a JSON array of objects: [{"field_type": ..., "value": ..., "confidence": .
 
 class ExtractionProviderError(RuntimeError):
     """Raised when the extraction call itself fails (network, rate limit, bad response)."""
+
+
+_CODE_FENCE_RE = re.compile(r"^```(?:json)?\s*|\s*```$", re.MULTILINE)
+
+
+def _strip_code_fence(text: str) -> str:
+    """Some models wrap JSON output in a ```json ... ``` fence despite the
+    prompt asking for a bare array — strip it before parsing rather than
+    tightening the prompt further, since this varies by model and isn't
+    reliably preventable from the prompt alone."""
+    return _CODE_FENCE_RE.sub("", text.strip()).strip()
 
 
 @dataclass(frozen=True)
@@ -59,8 +71,12 @@ class ClaudeExtractionAdapter:
                 system=EXTRACTION_SYSTEM_PROMPT,
                 messages=[{"role": "user", "content": ocr_text}],
             )
-            raw = response.content[0].text
-            parsed = json.loads(raw)
+            # Don't assume content[0] is the text block — some models (e.g.
+            # extended-thinking-capable ones) prepend a ThinkingBlock first.
+            text_blocks = [block.text for block in response.content if block.type == "text"]
+            if not text_blocks:
+                raise ExtractionProviderError("Claude response contained no text block")
+            parsed = json.loads(_strip_code_fence("".join(text_blocks)))
         except Exception as exc:  # noqa: BLE001
             raise ExtractionProviderError(f"Claude extraction call failed: {exc}") from exc
 

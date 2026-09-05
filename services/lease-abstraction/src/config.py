@@ -40,7 +40,7 @@ class Settings(BaseSettings):
     aws_region: str = "us-east-1"
 
     anthropic_api_key: str = ""
-    anthropic_model: str = "claude-opus-4-8"
+    anthropic_model: str = "claude-sonnet-5"
 
     openai_api_key: str = ""
     openai_model: str = "gpt-4o"
