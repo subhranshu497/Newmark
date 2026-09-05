@@ -29,6 +29,7 @@ from src.extraction.field_schemas import (
     anthropic_tool_schema,
     validate_field_value,
 )
+from src.fallback.providers import ProviderCallFailedError, call_anthropic_with_retry
 from src.models.enums import FieldType
 from src.queue.circuit_breaker import BreakerOpenError, call_with_breaker, extraction_breaker
 
@@ -68,21 +69,31 @@ class ClaudeExtractionAdapter:
             raise ExtractionProviderError("extraction circuit breaker is open") from exc
 
     def _call_claude(self, ocr_text: str) -> list[ExtractedFieldResult]:
+        # The network call is retried (transient 5xx / connection errors get up
+        # to 3 attempts with jitter — src/fallback/); response parsing below is
+        # not, since a parsing failure is a code/schema bug, not something a
+        # retry would fix.
         try:
-            response = self._client.messages.create(
-                model=self._model,
-                max_tokens=2048,
-                system=EXTRACTION_SYSTEM_PROMPT,
-                messages=[{"role": "user", "content": ocr_text}],
-                tools=[
-                    {
-                        "name": TOOL_NAME,
-                        "description": "Record the lease fields found in the text.",
-                        "input_schema": anthropic_tool_schema(),
-                    }
-                ],
-                tool_choice={"type": "tool", "name": TOOL_NAME},
+            response = call_anthropic_with_retry(
+                lambda: self._client.messages.create(
+                    model=self._model,
+                    max_tokens=2048,
+                    system=EXTRACTION_SYSTEM_PROMPT,
+                    messages=[{"role": "user", "content": ocr_text}],
+                    tools=[
+                        {
+                            "name": TOOL_NAME,
+                            "description": "Record the lease fields found in the text.",
+                            "input_schema": anthropic_tool_schema(),
+                        }
+                    ],
+                    tool_choice={"type": "tool", "name": TOOL_NAME},
+                )
             )
+        except ProviderCallFailedError as exc:
+            raise ExtractionProviderError(exc.user_message) from exc
+
+        try:
             # Don't assume content[0] is the answer — some models (e.g.
             # extended-thinking-capable ones) prepend a ThinkingBlock first.
             tool_uses = [

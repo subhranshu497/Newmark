@@ -29,6 +29,7 @@ from src.extraction.field_schemas import (
     openai_json_schema,
     validate_field_value,
 )
+from src.fallback.providers import ProviderCallFailedError, call_openai_with_retry
 from src.models.enums import FieldType
 
 logger = logging.getLogger(__name__)
@@ -57,22 +58,32 @@ class OpenAiExtractionAdapter:
         self._model = settings.openai_model
 
     def extract_fields(self, ocr_text: str) -> list[ExtractedFieldResult]:
+        # The network call is retried (transient 5xx / connection errors get up
+        # to 3 attempts with jitter — src/fallback/); response parsing below is
+        # not, since a parsing failure is a code/schema bug, not something a
+        # retry would fix.
         try:
-            response = self._client.chat.completions.create(
-                model=self._model,
-                messages=[
-                    {"role": "system", "content": OPENAI_SYSTEM_PROMPT},
-                    {"role": "user", "content": ocr_text},
-                ],
-                response_format={
-                    "type": "json_schema",
-                    "json_schema": {
-                        "name": "record_lease_fields",
-                        "schema": openai_json_schema(),
-                        "strict": True,
+            response = call_openai_with_retry(
+                lambda: self._client.chat.completions.create(
+                    model=self._model,
+                    messages=[
+                        {"role": "system", "content": OPENAI_SYSTEM_PROMPT},
+                        {"role": "user", "content": ocr_text},
+                    ],
+                    response_format={
+                        "type": "json_schema",
+                        "json_schema": {
+                            "name": "record_lease_fields",
+                            "schema": openai_json_schema(),
+                            "strict": True,
+                        },
                     },
-                },
+                )
             )
+        except ProviderCallFailedError as exc:
+            raise ExtractionProviderError(exc.user_message) from exc
+
+        try:
             items = json.loads(response.choices[0].message.content).get("fields", [])
         except Exception as exc:  # noqa: BLE001
             raise ExtractionProviderError(f"OpenAI extraction call failed: {exc}") from exc

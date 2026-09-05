@@ -12,10 +12,12 @@ on a different origin than this API.
 from __future__ import annotations
 
 import hashlib
+import logging
 import uuid
 from datetime import UTC, datetime
 from io import BytesIO
 
+import anthropic
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
 from pypdf import PdfReader
@@ -36,11 +38,19 @@ from src.models.review_queue_item import ReviewQueueItem
 from src.ocr.textract_adapter import OcrResult
 
 router = APIRouter(tags=["demo"])
+logger = logging.getLogger(__name__)
 
 # Below this many non-whitespace characters, treat the PDF as having no usable
 # text layer (e.g. a scanned image with no OCR available in this demo) rather
 # than feeding a near-empty string to the extraction model.
 MIN_USABLE_TEXT_CHARS = 20
+
+_SUMMARY_SYSTEM_PROMPT = (
+    "In exactly one sentence, describe what kind of document this is and what it covers, "
+    "in plain language a commercial real estate analyst would understand. Do not mention "
+    "that it lacks lease terms or discuss what's missing — just describe what the document "
+    "actually is."
+)
 
 
 class _PrecomputedOcrAdapter:
@@ -72,6 +82,29 @@ def _extract_pdf_text(data: bytes) -> str:
         return "\n".join(page.extract_text() or "" for page in reader.pages)
     except PdfReadError as exc:
         raise HTTPException(status_code=422, detail=f"not a readable PDF: {exc}") from exc
+
+
+def _summarize_document(text: str) -> str | None:
+    """One-line, plain-English description of what an uploaded document
+    actually is — shown when it produced zero lease fields, so the response
+    is "here's what this actually is" rather than a bare empty list. Best
+    effort: a failure here shouldn't fail the whole upload, since the fields
+    result (empty) is already valid and returned regardless.
+    """
+    settings = get_settings()
+    try:
+        client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+        response = client.messages.create(
+            model=settings.anthropic_model,
+            max_tokens=100,
+            system=_SUMMARY_SYSTEM_PROMPT,
+            messages=[{"role": "user", "content": text[:4000]}],
+        )
+        summary = "".join(b.text for b in response.content if b.type == "text").strip()
+        return summary or None
+    except Exception:  # noqa: BLE001 - best-effort; caller falls back to a generic message
+        logger.warning("document summary call failed", exc_info=True)
+        return None
 
 
 class SeedRequest(BaseModel):
@@ -173,6 +206,8 @@ class ParseUploadResponse(BaseModel):
     ocr_status: str
     fields: list[ParsedFieldOut]
     review_queue_item_ids: list[uuid.UUID]
+    is_valid_lease_document: bool
+    document_summary: str | None = None
 
 
 @router.post("/demo/parse-upload", response_model=ParseUploadResponse)
@@ -227,9 +262,10 @@ async def parse_uploaded_pdf(
     try:
         document = await consumer.handle(session, event)
     except (ExtractionUnavailableError, ExtractionProviderError) as exc:
-        raise HTTPException(
-            status_code=502, detail=f"extraction failed: {exc}"
-        ) from exc
+        # str(exc) is already a user-safe message by this point — either the
+        # retry-exhausted / non-retryable message from src/fallback/providers.py,
+        # or FailoverExtractionAdapter's own generic "both providers failed".
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
     if document is None:
         raise HTTPException(status_code=500, detail="pipeline did not create a document")
     await session.commit()
@@ -246,6 +282,15 @@ async def parse_uploaded_pdf(
     ).scalars().all()
     queued_field_ids = {q.extracted_field_id for q in queue_rows}
 
+    # Text extracted fine but none of the five lease fields were found — this is
+    # a real, valid outcome (see FIELD_EXTRACTION_INSTRUCTIONS), but a document
+    # this clearly isn't a lease at all is worth flagging explicitly rather than
+    # just returning an empty list, so the UI can say so instead of looking broken.
+    is_valid_lease_document = bool(field_rows)
+    document_summary = None
+    if not is_valid_lease_document and document.ocr_status == OcrStatus.COMPLETE:
+        document_summary = _summarize_document(text)
+
     return ParseUploadResponse(
         team_id=team,
         document_id=document.id,
@@ -261,4 +306,6 @@ async def parse_uploaded_pdf(
             for f in field_rows
         ],
         review_queue_item_ids=[q.id for q in queue_rows],
+        is_valid_lease_document=is_valid_lease_document,
+        document_summary=document_summary,
     )
