@@ -1,0 +1,294 @@
+{
+  "info": {
+    "_postman_id": "b6f2a1b0-6c1e-4b9a-9f2a-lease-abstraction",
+    "name": "Lease Abstraction (Newmark AI Layer)",
+    "description": "Contract-matching requests for lease-parser-api, per specs/001-lease-abstraction/contracts/api.md. Pre-filled with the demo IDs from test.md's seed script — run the seed script first, or edit the collection variables to point at your own data.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://127.0.0.1:8000" },
+    { "key": "teamId", "value": "11111111-1111-1111-1111-111111111111" },
+    { "key": "otherTeamId", "value": "99999999-9999-9999-9999-999999999999" },
+    { "key": "userId", "value": "44444444-4444-4444-4444-444444444444" },
+    { "key": "documentId", "value": "22222222-2222-2222-2222-222222222222" },
+    { "key": "fieldId", "value": "33333333-3333-3333-3333-333333333333" },
+    { "key": "reviewQueueItemId", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "Extracted Fields",
+      "item": [
+        {
+          "name": "List extracted fields for a document",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-User-Id", "value": "{{userId}}" },
+              { "key": "X-Team-Id", "value": "{{teamId}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/lease-documents/{{documentId}}/extracted-fields",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "lease-documents", "{{documentId}}", "extracted-fields"]
+            }
+          }
+        },
+        {
+          "name": "List extracted fields - 403 (wrong team, information barrier)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-User-Id", "value": "{{userId}}" },
+              { "key": "X-Team-Id", "value": "{{otherTeamId}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/lease-documents/{{documentId}}/extracted-fields",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "lease-documents", "{{documentId}}", "extracted-fields"]
+            }
+          }
+        },
+        {
+          "name": "Verify field - confirm as-is",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "X-User-Id", "value": "{{userId}}" },
+              { "key": "X-Team-Id", "value": "{{teamId}}" },
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Idempotency-Key", "value": "{{$guid}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/lease-documents/{{documentId}}/extracted-fields/{{fieldId}}/verify",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "lease-documents", "{{documentId}}", "extracted-fields", "{{fieldId}}", "verify"]
+            }
+          }
+        },
+        {
+          "name": "Verify field - override value",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "X-User-Id", "value": "{{userId}}" },
+              { "key": "X-Team-Id", "value": "{{teamId}}" },
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Idempotency-Key", "value": "{{$guid}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"value\": {\n    \"amount\": 40.0,\n    \"unit\": \"USD_PER_SQFT_PER_YEAR\"\n  }\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/lease-documents/{{documentId}}/extracted-fields/{{fieldId}}/verify",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "lease-documents", "{{documentId}}", "extracted-fields", "{{fieldId}}", "verify"]
+            }
+          }
+        },
+        {
+          "name": "Verify field - 409 (already verified, terminal-state guard)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "X-User-Id", "value": "{{userId}}" },
+              { "key": "X-Team-Id", "value": "{{teamId}}" },
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Idempotency-Key", "value": "{{$guid}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"value\": {\n    \"amount\": 1.0\n  }\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/lease-documents/{{documentId}}/extracted-fields/{{fieldId}}/verify",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "lease-documents", "{{documentId}}", "extracted-fields", "{{fieldId}}", "verify"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Review Queue",
+      "item": [
+        {
+          "name": "List review queue (own team, pending)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-User-Id", "value": "{{userId}}" },
+              { "key": "X-Team-Id", "value": "{{teamId}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/review-queue?teamId={{teamId}}&status=PENDING",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "review-queue"],
+              "query": [
+                { "key": "teamId", "value": "{{teamId}}" },
+                { "key": "status", "value": "PENDING" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "List review queue - 403 (another team's queue)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-User-Id", "value": "{{userId}}" },
+              { "key": "X-Team-Id", "value": "{{teamId}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/review-queue?teamId={{otherTeamId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "review-queue"],
+              "query": [
+                { "key": "teamId", "value": "{{otherTeamId}}" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Resolve review queue item (with existing field)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "X-User-Id", "value": "{{userId}}" },
+              { "key": "X-Team-Id", "value": "{{teamId}}" },
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Idempotency-Key", "value": "{{$guid}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"value\": {\n    \"raw\": \"3% annual, confirmed by analyst\"\n  }\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/review-queue/{{reviewQueueItemId}}/resolve",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "review-queue", "{{reviewQueueItemId}}", "resolve"]
+            }
+          }
+        },
+        {
+          "name": "Resolve review queue item (no existing field - requires field_type)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "X-User-Id", "value": "{{userId}}" },
+              { "key": "X-Team-Id", "value": "{{teamId}}" },
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Idempotency-Key", "value": "{{$guid}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"value\": {\n    \"amount\": 30.0\n  },\n  \"field_type\": \"BASE_RENT\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/review-queue/{{reviewQueueItemId}}/resolve",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "review-queue", "{{reviewQueueItemId}}", "resolve"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Metrics",
+      "item": [
+        {
+          "name": "Get extraction accuracy",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-User-Id", "value": "{{userId}}" },
+              { "key": "X-Team-Id", "value": "{{teamId}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/metrics/extraction-accuracy?fieldType=BASE_RENT",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "metrics", "extraction-accuracy"],
+              "query": [
+                { "key": "fieldType", "value": "BASE_RENT" },
+                { "key": "modelVersion", "value": "", "disabled": true }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get override rate",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-User-Id", "value": "{{userId}}" },
+              { "key": "X-Team-Id", "value": "{{teamId}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/metrics/override-rate?fieldType=BASE_RENT",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "metrics", "override-rate"],
+              "query": [
+                { "key": "fieldType", "value": "BASE_RENT" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Record baseline measurement",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sample_lease_ids\": [\"{{$guid}}\"],\n  \"measured_median_minutes\": 172.5,\n  \"method\": \"Postman demo timing\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/baseline-measurements",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "baseline-measurements"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Meta",
+      "item": [
+        {
+          "name": "OpenAPI schema (readiness check)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/openapi.json",
+              "host": ["{{baseUrl}}"],
+              "path": ["openapi.json"]
+            }
+          }
+        },
+        {
+          "name": "Swagger UI",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/docs",
+              "host": ["{{baseUrl}}"],
+              "path": ["docs"]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
