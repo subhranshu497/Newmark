@@ -28,6 +28,7 @@ from src.config import get_settings
 from src.consumers.document_uploaded_consumer import DocumentUploadedConsumer
 from src.extraction.claude_adapter import ClaudeExtractionAdapter, ExtractionProviderError
 from src.extraction.failover import ExtractionUnavailableError, FailoverExtractionAdapter
+from src.extraction.field_schemas import validate_field_value
 from src.models.enums import FieldType, OcrStatus, ReviewQueueStatus, RunType, VerificationStatus
 from src.models.extracted_field import ExtractedField
 from src.models.lease_document import LeaseDocument
@@ -116,7 +117,9 @@ async def seed_demo_record(
         id=uuid.uuid4(),
         lease_document_id=document_id,
         field_type=FieldType.BASE_RENT,
-        extracted_value={"amount": 38.50, "unit": "USD_PER_SQFT_PER_YEAR"},
+        extracted_value=validate_field_value(
+            FieldType.BASE_RENT, {"amount": 38.50, "unit": "USD_PER_SQFT_PER_YEAR"}
+        ),
         confidence_score=0.97,
         model_version="demo-seed",
         verification_status=VerificationStatus.UNVERIFIED,
@@ -127,7 +130,7 @@ async def seed_demo_record(
         id=uuid.uuid4(),
         lease_document_id=document_id,
         field_type=FieldType.FREE_RENT_PERIOD,
-        extracted_value={"months": 2},
+        extracted_value=validate_field_value(FieldType.FREE_RENT_PERIOD, {"months": 2}),
         confidence_score=0.55,
         model_version="demo-seed",
         verification_status=VerificationStatus.UNVERIFIED,
