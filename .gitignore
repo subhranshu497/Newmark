@@ -16,9 +16,6 @@ build/
 .env
 .env.*
 
-# Vercel
-.vercel
-
 # Node
 node_modules/
 
