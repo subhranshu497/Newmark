@@ -1,0 +1,20 @@
+[build]
+  base = "lease-parser-api"
+  publish = "public"
+  command = "pip install --upgrade pip && pip install ."
+
+[build.environment]
+  PYTHON_VERSION = "3.12"
+  # Turns on CORS + the /demo/* endpoints the frontend calls (src/api/main.py).
+  # Same flag used by the Render deploy (render.yaml) for this exact reason:
+  # the UI runs on its own origin (leasing-parsing-tool.netlify.app).
+  LEASE_ABSTRACTION_ENABLE_DEMO_UI = "1"
+
+[functions]
+  directory = "netlify/functions"
+  included_files = ["src/**"]
+
+[[redirects]]
+  from = "/*"
+  to = "/.netlify/functions/api/:splat"
+  status = 200
